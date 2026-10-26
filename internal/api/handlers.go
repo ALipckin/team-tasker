@@ -112,6 +112,10 @@ func (h *handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, team)
 }
 
+type teamListResponse struct {
+	Items []domain.Team `json:"items"`
+}
+
 // listTeams godoc
 //
 //	@Summary	Команды текущего пользователя
@@ -121,10 +125,6 @@ func (h *handler) createTeam(w http.ResponseWriter, r *http.Request) {
 //	@Success	200	{object}	teamListResponse
 //	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
 //	@Router		/api/v1/teams [get]
-type teamListResponse struct {
-	Items []domain.Team `json:"items"`
-}
-
 func (h *handler) listTeams(w http.ResponseWriter, r *http.Request) {
 	teams, err := h.teamService.List(r.Context(), userIDFromContext(r.Context()))
 	if err != nil {
@@ -234,13 +234,13 @@ func (h *handler) changeMemberRole(w http.ResponseWriter, r *http.Request) {
 //	@Tags		teams
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id	path		int	true	"ID команды"
-//	@Success	200	{object}	domain.TeamStats
-//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
-//	@Failure	403	{object}	errorResponse	"Недостаточно прав"
-//	@Router		/api/v1/teams/{id}/stats [get]
+//	@Param		team_id	path		int	true	"ID команды"
+//	@Success	200		{object}	domain.TeamStats
+//	@Failure	401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	403		{object}	errorResponse	"Недостаточно прав"
+//	@Router		/api/v1/teams/{team_id}/stats [get]
 func (h *handler) teamStats(w http.ResponseWriter, r *http.Request) {
-	teamID, err := pathID(r, "id")
+	teamID, err := pathID(r, "team_id")
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

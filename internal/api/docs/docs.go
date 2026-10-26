@@ -521,6 +521,34 @@ const docTemplate = `{
             }
         },
         "/api/v1/teams": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Команды текущего пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.teamListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Нет или неверный токен",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -722,7 +750,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/teams/{id}/stats": {
+        "/api/v1/teams/{team_id}/stats": {
             "get": {
                 "security": [
                     {
@@ -740,7 +768,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "ID команды",
-                        "name": "id",
+                        "name": "team_id",
                         "in": "path",
                         "required": true
                     }
@@ -971,6 +999,17 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/domain.TaskHistory"
+                    }
+                }
+            }
+        },
+        "api.teamListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Team"
                     }
                 }
             }

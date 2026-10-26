@@ -123,7 +123,7 @@ func (h *handler) Routes() http.Handler {
 	private.HandleFunc("/teams", h.listTeams).Methods(http.MethodGet)
 	private.HandleFunc("/teams/{id:[0-9]+}/invite", h.inviteMember).Methods(http.MethodPost)
 	private.HandleFunc("/teams/{id:[0-9]+}/members/{user_id:[0-9]+}", h.changeMemberRole).Methods(http.MethodPatch)
-	private.HandleFunc("/teams/{id:[0-9]+}/stats", h.teamStats).Methods(http.MethodGet)
+	private.HandleFunc("/teams/{team_id:[0-9]+}/stats", h.teamStats).Methods(http.MethodGet)
 
 	private.HandleFunc("/tasks", h.createTask).Methods(http.MethodPost)
 	private.HandleFunc("/tasks", h.listTasks).Methods(http.MethodGet)
