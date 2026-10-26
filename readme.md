@@ -10,7 +10,7 @@ REST API сервис для управления задачами внутри 
 - Redis 7 (кеш списка задач)
 - JWT (HS256), bcrypt
 - Docker + Docker Compose
-- OpenAPI 3 + Swagger UI
+- Swagger (OpenAPI 2.0) из аннотаций swaggo/swag + Swagger UI
 
 ## Быстрый старт
 
@@ -23,7 +23,7 @@ make docker-up-prod       # prod-образ (distroless)
 
 - API: `http://localhost:${APP_PORT}` (по умолчанию `8080`)
 - Swagger UI: `http://localhost:8080/swagger/`
-- OpenAPI-спека: `http://localhost:8080/swagger/openapi.yaml` (исходник — `internal/api/openapi.yaml`)
+- Спека: `http://localhost:8080/swagger/doc.json` (генерируется из аннотаций хендлеров: `make swagger` → `internal/api/docs`)
 - Health: `GET /health`
 
 ## Конфигурация

@@ -10,11 +10,23 @@ import (
 )
 
 type registerRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
+	Email    string `json:"email" validate:"required" format:"email" example:"alice@example.com"`
+	Password string `json:"password" validate:"required" minLength:"8" maxLength:"72" example:"secret123"`
+	Name     string `json:"name" validate:"required" example:"Alice"`
 }
 
+// register godoc
+//
+//	@Summary	Регистрация пользователя
+//	@Tags		auth
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		registerRequest	true	"Данные пользователя"
+//	@Success	201		{object}	domain.User
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	409		{object}	errorResponse	"Пользователь уже существует"
+//	@Failure	429		{object}	errorResponse	"Превышен лимит запросов"
+//	@Router		/api/v1/register [post]
 func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -32,8 +44,8 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 }
 
 type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required" format:"email" example:"alice@example.com"`
+	Password string `json:"password" validate:"required" example:"secret123"`
 }
 
 type loginResponse struct {
@@ -41,6 +53,17 @@ type loginResponse struct {
 	User  domain.User `json:"user"`
 }
 
+// login godoc
+//
+//	@Summary	Аутентификация, выдача JWT
+//	@Tags		auth
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		loginRequest	true	"Учётные данные"
+//	@Success	200		{object}	loginResponse
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401		{object}	errorResponse	"Неверные учётные данные"
+//	@Router		/api/v1/login [post]
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -58,9 +81,21 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 type createTeamRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" validate:"required" example:"Backend"`
 }
 
+// createTeam godoc
+//
+//	@Summary	Создание команды (текущий пользователь становится owner)
+//	@Tags		teams
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		body	body		createTeamRequest	true	"Команда"
+//	@Success	201		{object}	domain.Team
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401		{object}	errorResponse	"Нет или неверный токен"
+//	@Router		/api/v1/teams [post]
 func (h *handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	var req createTeamRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -77,6 +112,19 @@ func (h *handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, team)
 }
 
+// listTeams godoc
+//
+//	@Summary	Команды текущего пользователя
+//	@Tags		teams
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Success	200	{object}	teamListResponse
+//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
+//	@Router		/api/v1/teams [get]
+type teamListResponse struct {
+	Items []domain.Team `json:"items"`
+}
+
 func (h *handler) listTeams(w http.ResponseWriter, r *http.Request) {
 	teams, err := h.teamService.List(r.Context(), userIDFromContext(r.Context()))
 	if err != nil {
@@ -84,14 +132,32 @@ func (h *handler) listTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": teams})
+	writeJSON(w, http.StatusOK, teamListResponse{Items: teams})
 }
 
 type inviteRequest struct {
-	Email string      `json:"email"`
-	Role  domain.Role `json:"role"`
+	Email string      `json:"email" validate:"required" format:"email" example:"bob@example.com"`
+	Role  domain.Role `json:"role" enums:"admin,member" default:"member"`
 }
 
+// inviteMember godoc
+//
+//	@Summary		Добавить пользователя в команду (owner или admin)
+//	@Description	Пользователь должен быть зарегистрирован. Роль `owner` выдать нельзя.
+//	@Description	Роль `admin` может выдать только owner.
+//	@Tags			teams
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id		path		int				true	"ID команды"
+//	@Param			body	body		inviteRequest	true	"Приглашение"
+//	@Success		201		{object}	domain.TeamMember
+//	@Failure		400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure		401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure		403		{object}	errorResponse	"Недостаточно прав"
+//	@Failure		404		{object}	errorResponse	"Не найдено"
+//	@Failure		409		{object}	errorResponse	"Уже участник команды"
+//	@Router			/api/v1/teams/{id}/invite [post]
 func (h *handler) inviteMember(w http.ResponseWriter, r *http.Request) {
 	teamID, err := pathID(r, "id")
 	if err != nil {
@@ -115,9 +181,25 @@ func (h *handler) inviteMember(w http.ResponseWriter, r *http.Request) {
 }
 
 type changeRoleRequest struct {
-	Role domain.Role `json:"role"`
+	Role domain.Role `json:"role" validate:"required" enums:"admin,member"`
 }
 
+// changeMemberRole godoc
+//
+//	@Summary	Изменить роль участника (только owner)
+//	@Tags		teams
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id		path		int					true	"ID команды"
+//	@Param		user_id	path		int					true	"ID пользователя"
+//	@Param		body	body		changeRoleRequest	true	"Новая роль"
+//	@Success	200		{object}	domain.TeamMember
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	403		{object}	errorResponse	"Недостаточно прав"
+//	@Failure	404		{object}	errorResponse	"Не найдено"
+//	@Router		/api/v1/teams/{id}/members/{user_id} [patch]
 func (h *handler) changeMemberRole(w http.ResponseWriter, r *http.Request) {
 	teamID, err := pathID(r, "id")
 	if err != nil {
@@ -146,6 +228,17 @@ func (h *handler) changeMemberRole(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, member)
 }
 
+// teamStats godoc
+//
+//	@Summary	SQL-отчёт по команде (owner или admin)
+//	@Tags		teams
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id	path		int	true	"ID команды"
+//	@Success	200	{object}	domain.TeamStats
+//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	403	{object}	errorResponse	"Недостаточно прав"
+//	@Router		/api/v1/teams/{id}/stats [get]
 func (h *handler) teamStats(w http.ResponseWriter, r *http.Request) {
 	teamID, err := pathID(r, "id")
 	if err != nil {
@@ -163,13 +256,26 @@ func (h *handler) teamStats(w http.ResponseWriter, r *http.Request) {
 }
 
 type createTaskRequest struct {
-	TeamID      int64             `json:"team_id"`
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Status      domain.TaskStatus `json:"status"`
+	TeamID      int64             `json:"team_id" validate:"required" example:"1"`
+	Title       string            `json:"title" validate:"required" example:"Настроить CI"`
+	Description string            `json:"description" example:"GitHub Actions + линтер"`
+	Status      domain.TaskStatus `json:"status" default:"todo"`
 	AssigneeID  *int64            `json:"assignee_id"`
 }
 
+// createTask godoc
+//
+//	@Summary	Создать задачу в команде
+//	@Tags		tasks
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		body	body		createTaskRequest	true	"Задача"
+//	@Success	201		{object}	domain.Task
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	403		{object}	errorResponse	"Недостаточно прав"
+//	@Router		/api/v1/tasks [post]
 func (h *handler) createTask(w http.ResponseWriter, r *http.Request) {
 	var req createTaskRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -197,6 +303,22 @@ func (h *handler) createTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, task)
 }
 
+// listTasks godoc
+//
+//	@Summary	Список задач команды (кешируется в Redis на 5 минут)
+//	@Tags		tasks
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		team_id		query		int		true	"ID команды"
+//	@Param		status		query		string	false	"Статус"	Enums(todo, in_progress, done)
+//	@Param		assignee_id	query		int		false	"ID исполнителя"
+//	@Param		limit		query		int		false	"Размер страницы"	default(20)	minimum(1)	maximum(100)
+//	@Param		offset		query		int		false	"Смещение"			default(0)	minimum(0)
+//	@Success	200			{object}	domain.TaskList
+//	@Failure	400			{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401			{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	403			{object}	errorResponse	"Недостаточно прав"
+//	@Router		/api/v1/tasks [get]
 func (h *handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -249,6 +371,17 @@ func (h *handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+// getTask godoc
+//
+//	@Summary	Получить задачу
+//	@Tags		tasks
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id	path		int	true	"ID задачи"
+//	@Success	200	{object}	domain.Task
+//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	404	{object}	errorResponse	"Не найдено (в том числе задачи чужих команд)"
+//	@Router		/api/v1/tasks/{id} [get]
 func (h *handler) getTask(w http.ResponseWriter, r *http.Request) {
 	taskID, err := pathID(r, "id")
 	if err != nil {
@@ -271,9 +404,33 @@ type updateTaskRequest struct {
 	Status      *domain.TaskStatus `json:"status"`
 	// AssigneeID: 0 снимает исполнителя.
 	AssigneeID *int64 `json:"assignee_id"`
-	Version    int64  `json:"version"`
+	// Version — текущая версия задачи (optimistic locking).
+	Version int64 `json:"version" validate:"required"`
 }
 
+// updateTask godoc
+//
+//	@Summary		Обновить задачу
+//	@Description	Передаются только изменяемые поля и обязательная `version` — текущая версия задачи,
+//	@Description	полученная клиентом. Если задачу уже изменили, возвращается 409 и нужно перечитать задачу.
+//	@Description	Изменение записывается в историю в той же транзакции.
+//	@Description
+//	@Description	- owner/admin — любые поля;
+//	@Description	- создатель задачи — title, description, status, assignee_id;
+//	@Description	- исполнитель — только status.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id		path		int					true	"ID задачи"
+//	@Param			body	body		updateTaskRequest	true	"Изменения"
+//	@Success		200		{object}	domain.Task
+//	@Failure		400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure		401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure		403		{object}	errorResponse	"Недостаточно прав"
+//	@Failure		404		{object}	errorResponse	"Не найдено"
+//	@Failure		409		{object}	errorResponse	"Задача изменена конкурентно"
+//	@Router			/api/v1/tasks/{id} [put]
 func (h *handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	taskID, err := pathID(r, "id")
 	if err != nil {
@@ -304,6 +461,21 @@ func (h *handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
+type taskHistoryResponse struct {
+	Items []domain.TaskHistory `json:"items"`
+}
+
+// taskHistory godoc
+//
+//	@Summary	История изменений задачи
+//	@Tags		tasks
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id	path		int	true	"ID задачи"
+//	@Success	200	{object}	taskHistoryResponse
+//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	404	{object}	errorResponse	"Не найдено"
+//	@Router		/api/v1/tasks/{id}/history [get]
 func (h *handler) taskHistory(w http.ResponseWriter, r *http.Request) {
 	taskID, err := pathID(r, "id")
 	if err != nil {
@@ -317,13 +489,27 @@ func (h *handler) taskHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, taskHistoryResponse{Items: items})
 }
 
 type addCommentRequest struct {
-	Content string `json:"content"`
+	Content string `json:"content" validate:"required" example:"Взял в работу"`
 }
 
+// addComment godoc
+//
+//	@Summary	Добавить комментарий
+//	@Tags		tasks
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id		path		int					true	"ID задачи"
+//	@Param		body	body		addCommentRequest	true	"Комментарий"
+//	@Success	201		{object}	domain.TaskComment
+//	@Failure	400		{object}	errorResponse	"Некорректный запрос"
+//	@Failure	401		{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	404		{object}	errorResponse	"Не найдено"
+//	@Router		/api/v1/tasks/{id}/comments [post]
 func (h *handler) addComment(w http.ResponseWriter, r *http.Request) {
 	taskID, err := pathID(r, "id")
 	if err != nil {
@@ -346,6 +532,21 @@ func (h *handler) addComment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, comment)
 }
 
+type commentListResponse struct {
+	Items []domain.TaskComment `json:"items"`
+}
+
+// listComments godoc
+//
+//	@Summary	Комментарии задачи
+//	@Tags		tasks
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id	path		int	true	"ID задачи"
+//	@Success	200	{object}	commentListResponse
+//	@Failure	401	{object}	errorResponse	"Нет или неверный токен"
+//	@Failure	404	{object}	errorResponse	"Не найдено"
+//	@Router		/api/v1/tasks/{id}/comments [get]
 func (h *handler) listComments(w http.ResponseWriter, r *http.Request) {
 	taskID, err := pathID(r, "id")
 	if err != nil {
@@ -359,7 +560,7 @@ func (h *handler) listComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, commentListResponse{Items: items})
 }
 
 func queryInt(v, name string) (int64, error) {

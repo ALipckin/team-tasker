@@ -1,3 +1,23 @@
+// Package api — HTTP-слой сервиса.
+//
+//	@title			Task Service API
+//	@version		1.0.0
+//	@description	REST API для управления задачами внутри команд.
+//	@description
+//	@description	Роли в команде:
+//	@description	- **owner** — создатель: полный доступ, приглашает участников и администраторов, меняет роли.
+//	@description	- **admin** — приглашает участников (role=member), редактирует любые задачи, видит аналитику.
+//	@description	- **member** — видит задачи команды, создаёт задачи, редактирует свои задачи;
+//	@description	исполнитель задачи может менять только её статус.
+//	@description
+//	@description				Все защищённые эндпоинты требуют заголовок `Authorization: Bearer <JWT>`.
+//	@host						localhost:8080
+//	@BasePath					/
+//	@schemes					http
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Значение в формате `Bearer <JWT>`.
 package api
 
 import (
@@ -87,7 +107,7 @@ func (h *handler) Routes() http.Handler {
 	r.HandleFunc("/health", h.healthHandler).Methods(http.MethodGet)
 	r.HandleFunc("/swagger", swaggerUIHandler).Methods(http.MethodGet)
 	r.HandleFunc("/swagger/", swaggerUIHandler).Methods(http.MethodGet)
-	r.HandleFunc("/swagger/openapi.yaml", openAPISpecHandler).Methods(http.MethodGet)
+	r.HandleFunc("/swagger/doc.json", swaggerSpecHandler).Methods(http.MethodGet)
 
 	v1 := r.PathPrefix("/api/v1").Subrouter()
 	v1.HandleFunc("/register", h.register).Methods(http.MethodPost)
@@ -113,6 +133,13 @@ func (h *handler) Routes() http.Handler {
 	return r
 }
 
+// healthHandler godoc
+//
+//	@Summary	Health check
+//	@Tags		system
+//	@Produce	json
+//	@Success	200	{object}	map[string]string	"OK"
+//	@Router		/health [get]
 func (h *handler) healthHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

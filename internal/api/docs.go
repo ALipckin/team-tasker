@@ -1,12 +1,13 @@
 package api
 
 import (
-	_ "embed"
 	"net/http"
+
+	"backend/internal/api/docs"
 )
 
-//go:embed openapi.yaml
-var openAPISpec []byte
+// Спецификация генерируется из аннотаций хендлеров: make swagger.
+//go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.4 init -g server.go -d .,../domain -o docs --outputTypes go,yaml
 
 const swaggerUIPage = `<!doctype html>
 <html lang="en">
@@ -19,7 +20,7 @@ const swaggerUIPage = `<!doctype html>
 <div id="swagger-ui"></div>
 <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
 <script>
-  window.ui = SwaggerUIBundle({ url: '/swagger/openapi.yaml', dom_id: '#swagger-ui' });
+  window.ui = SwaggerUIBundle({ url: '/swagger/doc.json', dom_id: '#swagger-ui' });
 </script>
 </body>
 </html>`
@@ -29,7 +30,7 @@ func swaggerUIHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(swaggerUIPage))
 }
 
-func openAPISpecHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/yaml")
-	_, _ = w.Write(openAPISpec)
+func swaggerSpecHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(docs.SwaggerInfo.ReadDoc()))
 }

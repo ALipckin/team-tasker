@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-down docker-logs docker-clean shell build test test-unit lint fmt tidy docker-up-prod docker-down-prod docker-logs-prod docker-clean-prod shell-prod
+.PHONY: help docker-up docker-down docker-logs docker-clean shell build test test-unit lint fmt tidy swagger docker-up-prod docker-down-prod docker-logs-prod docker-clean-prod shell-prod
 
 COMPOSE_DEV = docker compose -f docker-compose.yml
 COMPOSE_PROD = docker compose -f docker-compose.prod.yml
@@ -21,6 +21,7 @@ help:
 	@echo "  make lint         - Run go vet in app container"
 	@echo "  make fmt          - Run gofmt in app container"
 	@echo "  make tidy         - Run go mod tidy in app container"
+	@echo "  make swagger      - Regenerate OpenAPI spec from handler annotations"
 
 docker-up:
 	@$(COMPOSE_DEV) up -d --build
@@ -69,3 +70,7 @@ fmt:
 
 tidy:
 	@$(COMPOSE_DEV) run --rm --no-deps app go mod tidy
+
+swagger:
+	@go run github.com/swaggo/swag/cmd/swag@v1.16.4 init -g server.go -d ./internal/api,./internal/domain -o ./internal/api/docs --outputTypes go,yaml
+	@go run github.com/swaggo/swag/cmd/swag@v1.16.4 fmt -d ./internal/api
