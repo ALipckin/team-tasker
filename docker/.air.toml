@@ -1,0 +1,14 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "dlv debug ./cmd/api --headless --listen=:40000 --api-version=2 --accept-multiclient --continue --log"
+bin = "tmp/api"
+delay = 200
+exclude_dir = ["tmp", "vendor"]
+include_ext = ["go", "sql"]
+send_interrupt = true
+kill_delay = 500
+
+[log]
+time = true

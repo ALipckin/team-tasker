@@ -1,0 +1,10 @@
+log/
+tmp
+/tmp/*
+.env*
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db

@@ -1,0 +1,124 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errcheck
+    - exhaustive
+    - funlen
+    - gochecknoglobals
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - mnd
+    - nakedret
+    - nestif
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - testpackage
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  settings:
+    dupl:
+      threshold: 200
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    funlen:
+      lines: 120
+      statements: 60
+    gocognit:
+      min-complexity: 30
+    goconst:
+      min-occurrences: 5
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+      enabled-tags:
+        - diagnostic
+        - performance
+        - opinionated
+    gocyclo:
+      min-complexity: 25
+    govet:
+      enable:
+        - atomicalign
+      disable:
+        - shadow
+    lll:
+      line-length: 120
+    misspell:
+      locale: UK
+    nakedret:
+      max-func-lines: 20
+    nestif:
+      min-complexity: 12
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    prealloc:
+      simple: true
+      range-loops: false
+      for-loops: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - mnd
+          - testpackage
+        path: _test\.go
+      - linters:
+          - gocritic
+        text: 'unnecessaryDefer:'
+      - linters:
+          - misspell
+        text: (initialize|Initializing|initialized|Initialise|Initialising|initialised)
+      - linters:
+          - mnd
+        text: (Magic number|Magic number:)
+      - linters:
+          - unparam
+        path: _test\.go
+      - linters:
+          - gocritic
+        text: 'rangeValCopy:'
+      - linters:
+          - gocritic
+        text: 'hugeParam:'
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
