@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -26,6 +28,8 @@ type Config struct {
 	// RateLimitRPS — сколько запросов в секунду разрешено одному клиенту (0 — без ограничения).
 	RateLimitRPS   float64
 	RateLimitBurst int
+	// TrustedProxies — CIDR прокси, которым доверяем X-Forwarded-For (TRUSTED_PROXIES через запятую).
+	TrustedProxies []*net.IPNet
 }
 
 func AppConfig() (*Config, error) {
@@ -54,6 +58,11 @@ func AppConfig() (*Config, error) {
 		return nil, err
 	}
 
+	trusted, err := parseCIDRs("TRUSTED_PROXIES", os.Getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		AppPort: getEnv("APP_PORT", "8080"),
 		DSN: GetDSN(
@@ -72,6 +81,7 @@ func AppConfig() (*Config, error) {
 		TasksCacheTTL:  cacheTTL,
 		RateLimitRPS:   rps,
 		RateLimitBurst: burst,
+		TrustedProxies: trusted,
 	}
 
 	if cfg.JWTSecret == "" {
@@ -131,4 +141,23 @@ func getEnvDuration(name string, fallback time.Duration) (time.Duration, error) 
 	}
 
 	return d, nil
+}
+
+func parseCIDRs(name, value string) ([]*net.IPNet, error) {
+	var nets []*net.IPNet
+
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		_, n, err := net.ParseCIDR(part)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		nets = append(nets, n)
+	}
+
+	return nets, nil
 }

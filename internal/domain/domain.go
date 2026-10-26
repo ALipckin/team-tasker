@@ -132,11 +132,12 @@ type TaskCommentStat struct {
 }
 
 type TeamStats struct {
-	TeamID              int64             `json:"team_id"`
-	TasksByStatus       map[string]int64  `json:"tasks_by_status"`
-	TopAssignees30d     []AssigneeStat    `json:"top_assignees_30d"`
-	ClosedTasks         int64             `json:"closed_tasks"`
-	AvgCloseTimeSeconds *float64          `json:"avg_close_time_seconds"`
-	TotalComments       int64             `json:"total_comments"`
-	CommentsByTask      []TaskCommentStat `json:"comments_by_task"`
+	TeamID              int64            `json:"team_id"`
+	TasksByStatus       map[string]int64 `json:"tasks_by_status"`
+	TopAssignees30d     []AssigneeStat   `json:"top_assignees_30d"`
+	ClosedTasks         int64            `json:"closed_tasks"`
+	AvgCloseTimeSeconds *float64         `json:"avg_close_time_seconds"`
+	TotalComments       int64            `json:"total_comments"`
+	// CommentsByTask — до 10 задач с наибольшим числом комментариев.
+	CommentsByTask []TaskCommentStat `json:"comments_by_task"`
 }

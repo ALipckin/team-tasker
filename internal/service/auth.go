@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -47,7 +48,15 @@ func NewAuthService(userRepo AuthUserRepository, secret string, ttl time.Duratio
 	}
 }
 
-const minPasswordLen = 8
+const (
+	minPasswordLen = 8
+	// maxNameLen — длина VARCHAR(255) в символах (utf8mb4).
+	maxNameLen = 255
+)
+
+// dummyHash сравнивается с паролем, когда пользователь не найден, чтобы время
+// ответа Login не выдавало, зарегистрирован ли email.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
 
 func (s *authService) Register(ctx context.Context, email, password, name string) (domain.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -55,6 +64,9 @@ func (s *authService) Register(ctx context.Context, email, password, name string
 
 	if _, err := mail.ParseAddress(email); err != nil {
 		return domain.User{}, validationError("invalid email")
+	}
+	if utf8.RuneCountInString(email) > maxNameLen {
+		return domain.User{}, validationError("email is too long")
 	}
 	if len(password) < minPasswordLen {
 		return domain.User{}, validationError(fmt.Sprintf("password must be at least %d characters", minPasswordLen))
@@ -64,6 +76,9 @@ func (s *authService) Register(ctx context.Context, email, password, name string
 	}
 	if name == "" {
 		return domain.User{}, validationError("name is required")
+	}
+	if utf8.RuneCountInString(name) > maxNameLen {
+		return domain.User{}, validationError("name is too long")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -86,6 +101,7 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 
 	u, err := s.userRepo.GetByEmail(ctx, email)
 	if errors.Is(err, domain.ErrNotFound) {
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return "", domain.User{}, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 	}
 	if err != nil {

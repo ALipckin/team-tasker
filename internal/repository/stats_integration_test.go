@@ -146,6 +146,12 @@ func TestTeamStatsIntegration(t *testing.T) {
 	if len(stats.CommentsByTask) != 7 {
 		t.Errorf("comments_by_task has %d tasks, want 7", len(stats.CommentsByTask))
 	}
+	for i := 1; i < len(stats.CommentsByTask); i++ {
+		if stats.CommentsByTask[i].Comments > stats.CommentsByTask[i-1].Comments {
+			t.Errorf("comments_by_task is not sorted by comments desc: %+v", stats.CommentsByTask)
+			break
+		}
+	}
 	for _, c := range stats.CommentsByTask {
 		if c.TaskID == tb {
 			t.Errorf("task %d of another team leaked into stats", tb)

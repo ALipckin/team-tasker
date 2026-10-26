@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"backend/internal/domain"
 )
@@ -48,7 +49,7 @@ func (s *teamService) Create(ctx context.Context, userID int64, name string) (do
 	if name == "" {
 		return domain.Team{}, validationError("name is required")
 	}
-	if len(name) > 255 {
+	if utf8.RuneCountInString(name) > maxNameLen {
 		return domain.Team{}, validationError("name is too long")
 	}
 

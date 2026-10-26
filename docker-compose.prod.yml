@@ -8,13 +8,14 @@ x-app-env: &app-env
   DB_PORT: "3306"
   REDIS_HOST: redis
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required in prod}
   REDIS_DB: ${REDIS_DB:-0}
   JWT_SECRET: ${JWT_SECRET}
   JWT_TTL: ${JWT_TTL:-24h}
   TASKS_CACHE_TTL: ${TASKS_CACHE_TTL:-5m}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
   MIGRATIONS_PATH: file:///app/internal/database/migrations
 
 services:
@@ -30,7 +31,8 @@ services:
       TZ: ${TZ}
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-time-zone=+00:00"]
     ports:
-      - "${DB_EXPOSE_PORT:-3306}:3306"
+      # Только localhost: БД не должна быть доступна снаружи хоста.
+      - "127.0.0.1:${DB_EXPOSE_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -45,9 +47,10 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "if [ -n \"$$REDIS_PASSWORD\" ]; then exec redis-server --requirepass \"$$REDIS_PASSWORD\"; else exec redis-server; fi"]
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required in prod}
     ports:
-      - "${REDIS_EXPOSE_PORT:-6379}:6379"
+      # Только localhost: кэш общий для всех команд и не должен быть доступен снаружи.
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a $$REDIS_PASSWORD} ping | grep PONG"]
       interval: 5s

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,8 +86,10 @@ func (fakeComments) ListByTask(context.Context, int64) ([]domain.TaskComment, er
 }
 
 type fakeCache struct {
-	data  map[string]string
-	reads int
+	data     map[string]string
+	reads    int
+	incrErr  error
+	incrCtxs []context.Context
 }
 
 func (f *fakeCache) Get(_ context.Context, key string) (string, error) {
@@ -103,7 +106,11 @@ func (f *fakeCache) Set(_ context.Context, key, value string, _ time.Duration) e
 	return nil
 }
 
-func (f *fakeCache) Incr(_ context.Context, key string) (int64, error) {
+func (f *fakeCache) Incr(ctx context.Context, key string) (int64, error) {
+	f.incrCtxs = append(f.incrCtxs, ctx)
+	if f.incrErr != nil {
+		return 0, f.incrErr
+	}
 	var n int64
 	_, _ = fmt.Sscan(f.data[key], &n)
 	n++
@@ -280,5 +287,81 @@ func TestTaskListUsesCache(t *testing.T) {
 	}
 	if second.Total != first.Total {
 		t.Errorf("expected cached result with total %d, got %d", first.Total, second.Total)
+	}
+}
+
+func TestTaskNoopUpdateKeepsCache(t *testing.T) {
+	f := newFixture(t)
+	verBefore := f.cache.data[teamVersionKey(teamID)]
+
+	_, err := f.svc.Update(context.Background(), owner, f.task.ID, UpdateTaskInput{
+		TaskPatch: domain.TaskPatch{Title: ptr("task")},
+		Version:   1,
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	if f.cache.data[teamVersionKey(teamID)] != verBefore {
+		t.Error("no-op update must not invalidate cache")
+	}
+}
+
+func TestTaskInvalidationSurvivesCanceledRequest(t *testing.T) {
+	f := newFixture(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	f.svc.invalidateTeam(ctx, teamID)
+
+	last := f.cache.incrCtxs[len(f.cache.incrCtxs)-1]
+	if last.Err() != nil {
+		t.Fatalf("invalidation must not use a canceled context: %v", last.Err())
+	}
+}
+
+func TestTaskListBypassesCacheUntilInvalidationSucceeds(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	if _, err := f.svc.List(ctx, member, domain.TaskFilter{TeamID: teamID}); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	// Redis недоступен в момент изменения: версия команды не увеличилась.
+	f.cache.incrErr = errors.New("redis down")
+	f.tasks.tasks[999] = domain.Task{ID: 999, TeamID: teamID}
+	f.svc.invalidateTeam(ctx, teamID)
+
+	list, err := f.svc.List(ctx, member, domain.TaskFilter{TeamID: teamID})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if list.Total != 2 {
+		t.Fatalf("stale cache served while invalidation is pending: total %d", list.Total)
+	}
+
+	// Redis восстановился: инвалидация повторяется, кэш снова используется.
+	f.cache.incrErr = nil
+	if _, err = f.svc.List(ctx, member, domain.TaskFilter{TeamID: teamID}); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if _, stale := f.svc.staleTeams.Load(teamID); stale {
+		t.Error("team must not stay stale after successful invalidation")
+	}
+}
+
+func TestTaskTitleLengthCountsCharacters(t *testing.T) {
+	f := newFixture(t)
+
+	title := strings.Repeat("ж", maxTitleLen)
+	if _, err := f.svc.Create(context.Background(), owner, CreateTaskInput{TeamID: teamID, Title: title}); err != nil {
+		t.Fatalf("255 cyrillic characters must fit: %v", err)
+	}
+
+	_, err := f.svc.Create(context.Background(), owner, CreateTaskInput{TeamID: teamID, Title: title + "ж"})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("expected validation error, got %v", err)
 	}
 }

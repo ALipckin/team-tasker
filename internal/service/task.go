@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"backend/internal/cache"
 	"backend/internal/domain"
@@ -75,6 +77,10 @@ type taskService struct {
 	cache       TaskCache
 	cacheTTL    time.Duration
 	now         func() time.Time
+
+	// staleTeams — команды, для которых не удалось инвалидировать кэш.
+	// Пока команда здесь, её списки читаются из БД, а инвалидация повторяется.
+	staleTeams sync.Map
 }
 
 func NewTaskService(
@@ -110,7 +116,7 @@ func (s *taskService) Create(ctx context.Context, userID int64, in CreateTaskInp
 	if in.Title == "" {
 		return domain.Task{}, validationError("title is required")
 	}
-	if len(in.Title) > maxTitleLen {
+	if utf8.RuneCountInString(in.Title) > maxTitleLen {
 		return domain.Task{}, validationError("title is too long")
 	}
 	if len(in.Description) > maxContentLen {
@@ -242,7 +248,7 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 		if t == "" {
 			return domain.Task{}, validationError("title must not be empty")
 		}
-		if len(t) > maxTitleLen {
+		if utf8.RuneCountInString(t) > maxTitleLen {
 			return domain.Task{}, validationError("title is too long")
 		}
 		in.Title = &t
@@ -254,7 +260,15 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 		return domain.Task{}, validationError("invalid status")
 	}
 
-	var task domain.Task
+	// Доступ проверяем до блокировки, чтобы посторонний не мог блокировать строки чужих задач.
+	if _, err := s.visibleTask(ctx, userID, taskID); err != nil {
+		return domain.Task{}, err
+	}
+
+	var (
+		task    domain.Task
+		changed bool
+	)
 
 	err := s.tx.WithTx(ctx, func(ctx context.Context) error {
 		current, err := s.taskRepo.GetByIDForUpdate(ctx, taskID)
@@ -295,10 +309,15 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 			return err
 		}
 
+		changed = true
 		return s.historyRepo.Add(ctx, &domain.TaskHistory{TaskID: task.ID, ChangedBy: userID, Changes: changes})
 	})
 	if err != nil {
 		return domain.Task{}, err
+	}
+
+	if !changed {
+		return task, nil
 	}
 
 	s.invalidateTeam(ctx, task.TeamID)
@@ -444,6 +463,11 @@ func teamVersionKey(teamID int64) string {
 }
 
 func (s *taskService) listCacheKey(ctx context.Context, f domain.TaskFilter) (string, bool) {
+	if _, stale := s.staleTeams.Load(f.TeamID); stale && !s.invalidateTeam(ctx, f.TeamID) {
+		// Инвалидация так и не прошла — кэш команды может быть устаревшим.
+		return "", false
+	}
+
 	ver := int64(0)
 
 	raw, err := s.cache.Get(ctx, teamVersionKey(f.TeamID))
@@ -471,10 +495,22 @@ func (s *taskService) listCacheKey(ctx context.Context, f domain.TaskFilter) (st
 		f.TeamID, ver, status, assignee, f.Limit, f.Offset), true
 }
 
-func (s *taskService) invalidateTeam(ctx context.Context, teamID int64) {
+// invalidateTeam сбрасывает кэш списков команды. Изменение уже закоммичено,
+// поэтому отмена запроса клиентом не должна прерывать инвалидацию.
+// При ошибке команда помечается устаревшей: её списки идут мимо кэша,
+// пока очередная попытка инвалидации не пройдёт.
+func (s *taskService) invalidateTeam(ctx context.Context, teamID int64) bool {
+	ctx = context.WithoutCancel(ctx)
+
 	if _, err := s.cache.Incr(ctx, teamVersionKey(teamID)); err != nil {
-		slog.WarnContext(ctx, "tasks cache invalidation failed", "team_id", teamID, "err", err)
+		if _, already := s.staleTeams.LoadOrStore(teamID, struct{}{}); !already {
+			slog.WarnContext(ctx, "tasks cache invalidation failed", "team_id", teamID, "err", err)
+		}
+		return false
 	}
+
+	s.staleTeams.Delete(teamID)
+	return true
 }
 
 func isCacheMiss(err error) bool {

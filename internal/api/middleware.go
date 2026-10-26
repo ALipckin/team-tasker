@@ -120,6 +120,59 @@ func newRequestID() string {
 	return hex.EncodeToString(b)
 }
 
+// realIP подменяет r.RemoteAddr адресом клиента из X-Forwarded-For, если запрос
+// пришёл от доверенного прокси. Берётся самый правый адрес, не принадлежащий
+// доверенным прокси: левые части заголовка клиент может подделать.
+func realIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if len(trusted) == 0 {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isTrusted(trusted, clientIP(r)) {
+				if ip := forwardedFor(trusted, r.Header.Values("X-Forwarded-For")); ip != "" {
+					r.RemoteAddr = net.JoinHostPort(ip, "0")
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func forwardedFor(trusted []*net.IPNet, headers []string) string {
+	var hops []string
+	for _, h := range headers {
+		hops = append(hops, strings.Split(h, ",")...)
+	}
+
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if net.ParseIP(hop) == nil {
+			return ""
+		}
+		if !isTrusted(trusted, hop) {
+			return hop
+		}
+	}
+
+	return ""
+}
+
+func isTrusted(trusted []*net.IPNet, addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range trusted {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

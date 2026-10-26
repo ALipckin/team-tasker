@@ -22,6 +22,7 @@ package api
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -64,6 +65,8 @@ type Handler interface {
 type Options struct {
 	RateLimitRPS   float64
 	RateLimitBurst int
+	// TrustedProxies — сети прокси, которым доверяем X-Forwarded-For.
+	TrustedProxies []*net.IPNet
 }
 
 type handler struct {
@@ -99,7 +102,7 @@ func (h *handler) Routes() http.Handler {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	})
 
-	r.Use(requestLogger, recoverer)
+	r.Use(realIP(h.opts.TrustedProxies), requestLogger, recoverer)
 	if h.opts.RateLimitRPS > 0 {
 		r.Use(newRateLimiter(h.opts.RateLimitRPS, h.opts.RateLimitBurst).middleware)
 	}

@@ -15,6 +15,7 @@ x-app-env: &app-env
   TASKS_CACHE_TTL: ${TASKS_CACHE_TTL:-5m}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
   MIGRATIONS_PATH: file:///workspace/internal/database/migrations
 
 services:

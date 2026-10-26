@@ -22,6 +22,10 @@ func NewStatsRepo(db DB) StatsRepo {
 	return &statsRepo{db: db}
 }
 
+// maxCommentedTasks — сколько задач с наибольшим числом комментариев попадает в отчёт.
+// Должно совпадать с LIMIT в top_commented.
+const maxCommentedTasks = 10
+
 // teamStatsQuery собирает весь отчёт по команде одним запросом.
 // Каждая метрика — отдельная CTE, результаты объединяются через UNION ALL
 // в строки вида (metric, ref_id, label, int_value, float_value).
@@ -58,6 +62,15 @@ comment_counts AS (
     FROM team_tasks t
     LEFT JOIN task_comments c ON c.task_id = t.id
     GROUP BY t.id, t.title
+),
+top_commented AS (
+    SELECT task_id, title, cnt
+    FROM comment_counts
+    ORDER BY cnt DESC, task_id
+    LIMIT 10
+),
+total_comments AS (
+    SELECT COALESCE(SUM(cnt), 0) AS cnt FROM comment_counts
 )
 SELECT 'status' AS metric, CAST(NULL AS SIGNED) AS ref_id, status AS label,
        cnt AS int_value, CAST(NULL AS DOUBLE) AS float_value
@@ -67,7 +80,9 @@ SELECT 'top_assignee', user_id, name, closed_cnt, NULL FROM top_assignees
 UNION ALL
 SELECT 'close_time', NULL, NULL, closed_cnt, avg_seconds FROM close_time
 UNION ALL
-SELECT 'comments', task_id, title, cnt, NULL FROM comment_counts
+SELECT 'comments', task_id, title, cnt, NULL FROM top_commented
+UNION ALL
+SELECT 'total_comments', NULL, NULL, cnt, NULL FROM total_comments
 `
 
 func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamStats, error) {
@@ -79,7 +94,7 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 			string(domain.StatusDone):       0,
 		},
 		TopAssignees30d: make([]domain.AssigneeStat, 0, 3),
-		CommentsByTask:  make([]domain.TaskCommentStat, 0),
+		CommentsByTask:  make([]domain.TaskCommentStat, 0, maxCommentedTasks),
 	}
 
 	rows, err := r.db.Conn(ctx).QueryContext(ctx, teamStatsQuery, teamID)
@@ -112,8 +127,9 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 			if floatVal.Valid {
 				stats.AvgCloseTimeSeconds = &floatVal.Float64
 			}
+		case "total_comments":
+			stats.TotalComments = intVal
 		case "comments":
-			stats.TotalComments += intVal
 			stats.CommentsByTask = append(stats.CommentsByTask, domain.TaskCommentStat{
 				TaskID: refID.Int64, Title: label.String, Comments: intVal,
 			})
@@ -132,7 +148,11 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 		return a.UserID < b.UserID
 	})
 	sort.Slice(stats.CommentsByTask, func(i, j int) bool {
-		return stats.CommentsByTask[i].TaskID < stats.CommentsByTask[j].TaskID
+		a, b := stats.CommentsByTask[i], stats.CommentsByTask[j]
+		if a.Comments != b.Comments {
+			return a.Comments > b.Comments
+		}
+		return a.TaskID < b.TaskID
 	})
 
 	return stats, nil

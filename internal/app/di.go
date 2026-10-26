@@ -172,6 +172,7 @@ func (d *diContainer) Handler() api.Handler {
 			api.Options{
 				RateLimitRPS:   d.Config().RateLimitRPS,
 				RateLimitBurst: d.Config().RateLimitBurst,
+				TrustedProxies: d.Config().TrustedProxies,
 			},
 		)
 	}

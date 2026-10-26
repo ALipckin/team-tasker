@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync"
@@ -72,6 +73,15 @@ func (b *breaker) allow() bool {
 func (b *breaker) record(err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Отмена или таймаут запроса клиента ничего не говорит о здоровье Redis.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if b.state == stateHalfOpen {
+			// Пробный запрос не дал ответа — следующий запрос станет новым пробным.
+			b.state = stateOpen
+		}
+		return
+	}
 
 	if err == nil {
 		if b.state != stateClosed {

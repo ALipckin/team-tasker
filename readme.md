@@ -39,11 +39,12 @@ make docker-up-prod       # prod-образ (distroless)
 | `DB_ROOT_PASSWORD` | — | Root-пароль контейнера MySQL (только compose) |
 | `MIGRATIONS_PATH` | `file://internal/database/migrations` | Путь к миграциям |
 | `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | Redis (в compose — `redis:6379`) |
-| `REDIS_PASSWORD`, `REDIS_DB` | пусто, `0` | |
+| `REDIS_PASSWORD`, `REDIS_DB` | пусто, `0` | В `docker-compose.prod.yml` пароль обязателен |
 | `JWT_SECRET` | — (**обязательно**) | Секрет подписи JWT |
 | `JWT_TTL` | `24h` | Время жизни токена |
 | `TASKS_CACHE_TTL` | `5m` | TTL кеша списка задач |
 | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` | `20`, `40` | Лимит запросов на IP (`RATE_LIMIT_RPS=0` — выключить) |
+| `TRUSTED_PROXIES` | пусто | CIDR прокси через запятую, от которых принимается `X-Forwarded-For` для определения IP клиента |
 | `DB_EXPOSE_PORT`, `REDIS_EXPOSE_PORT`, `DLV_PORT` | `3306`, `6379`, `40000` | Порты, пробрасываемые на хост |
 
 ## Миграции
@@ -93,6 +94,8 @@ docker run --rm --network <project>_default -v "$PWD/internal/database/migration
 - **Circuit breaker.** Все обращения к Redis идут через circuit breaker: при недоступности Redis сервис
   отвечает из MySQL без задержек на таймауты.
 - **Rate limiting.** Token bucket на IP клиента, ответ `429` с `Retry-After`.
+  За обратным прокси задайте `TRUSTED_PROXIES`, иначе все клиенты получат общий лимит по адресу прокси.
+  Docker Desktop подменяет адрес клиента на адрес шлюза, поэтому локально лимит общий.
 - **Логи.** Структурированные JSON-логи (`slog`) по каждому запросу: `request_id`, метод, путь, статус,
   длительность, `user_id`. Заголовок `X-Request-ID` прокидывается в ответ.
 - **Graceful shutdown** по SIGINT/SIGTERM.
@@ -105,7 +108,7 @@ docker run --rm --network <project>_default -v "$PWD/internal/database/migration
 - количество задач по статусам;
 - топ-3 исполнителя по закрытым задачам за последние 30 дней (`JOIN users`, `GROUP BY`, `LIMIT 3`);
 - количество закрытых задач и среднее время закрытия (`AVG(TIMESTAMPDIFF(SECOND, created_at, closed_at))`);
-- количество комментариев по каждой задаче и общее (`LEFT JOIN task_comments`, `GROUP BY`).
+- общее количество комментариев и топ-10 задач по числу комментариев (`LEFT JOIN task_comments`, `GROUP BY`).
 
 ## Примеры запросов
 
