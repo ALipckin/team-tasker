@@ -23,14 +23,13 @@ func NewStatsRepo(db DB) StatsRepo {
 }
 
 // maxCommentedTasks — сколько задач с наибольшим числом комментариев попадает в отчёт.
-// Должно совпадать с LIMIT в top_commented.
 const maxCommentedTasks = 10
 
 // teamStatsQuery собирает весь отчёт по команде одним запросом.
 // Каждая метрика — отдельная CTE, результаты объединяются через UNION ALL
 // в строки вида (metric, ref_id, label, int_value, float_value).
 // Все CTE опираются на team_tasks, поэтому данные других команд в отчёт не попадают.
-const teamStatsQuery = `
+var teamStatsQuery = fmt.Sprintf(`
 WITH team_tasks AS (
     SELECT id, title, status, assignee_id, created_at, closed_at
     FROM tasks
@@ -67,7 +66,7 @@ top_commented AS (
     SELECT task_id, title, cnt
     FROM comment_counts
     ORDER BY cnt DESC, task_id
-    LIMIT 10
+    LIMIT %d
 ),
 total_comments AS (
     SELECT COALESCE(SUM(cnt), 0) AS cnt FROM comment_counts
@@ -83,7 +82,7 @@ UNION ALL
 SELECT 'comments', task_id, title, cnt, NULL FROM top_commented
 UNION ALL
 SELECT 'total_comments', NULL, NULL, cnt, NULL FROM total_comments
-`
+`, maxCommentedTasks)
 
 func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamStats, error) {
 	stats := domain.TeamStats{
