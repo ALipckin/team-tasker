@@ -264,7 +264,9 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 	}
 
 	// Доступ проверяем до блокировки, чтобы посторонний не мог блокировать строки чужих задач.
-	if _, err := s.visibleTask(ctx, userID, taskID); err != nil {
+	// Команда задачи не меняется, поэтому роль можно не перечитывать в транзакции.
+	_, role, err := s.taskRole(ctx, userID, taskID)
+	if err != nil {
 		return domain.Task{}, err
 	}
 
@@ -273,17 +275,8 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 		changed bool
 	)
 
-	err := s.tx.WithTx(ctx, func(ctx context.Context) error {
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
 		current, err := s.taskRepo.GetByIDForUpdate(ctx, taskID)
-		if err != nil {
-			return err
-		}
-
-		role, err := s.teamRepo.GetMemberRole(ctx, current.TeamID, userID)
-		if errors.Is(err, domain.ErrNotFound) {
-			// Не раскрываем существование задач чужих команд.
-			return fmt.Errorf("task: %w", domain.ErrNotFound)
-		}
 		if err != nil {
 			return err
 		}
@@ -369,19 +362,27 @@ func (s *taskService) Comments(ctx context.Context, userID, taskID int64) ([]dom
 // visibleTask возвращает задачу, если пользователь состоит в её команде.
 // Для задач чужих команд возвращается ErrNotFound.
 func (s *taskService) visibleTask(ctx context.Context, userID, taskID int64) (domain.Task, error) {
+	task, _, err := s.taskRole(ctx, userID, taskID)
+	return task, err
+}
+
+// taskRole возвращает задачу и роль пользователя в её команде.
+// Для задач чужих команд возвращается ErrNotFound.
+func (s *taskService) taskRole(ctx context.Context, userID, taskID int64) (domain.Task, domain.Role, error) {
 	task, err := s.taskRepo.GetByID(ctx, taskID)
 	if err != nil {
-		return domain.Task{}, err
+		return domain.Task{}, "", err
 	}
 
-	if _, err = s.teamRepo.GetMemberRole(ctx, task.TeamID, userID); err != nil {
+	role, err := s.teamRepo.GetMemberRole(ctx, task.TeamID, userID)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return domain.Task{}, fmt.Errorf("task: %w", domain.ErrNotFound)
+			return domain.Task{}, "", fmt.Errorf("task: %w", domain.ErrNotFound)
 		}
-		return domain.Task{}, err
+		return domain.Task{}, "", err
 	}
 
-	return task, nil
+	return task, role, nil
 }
 
 // checkAssignee проверяет, что исполнитель состоит в команде задачи.
