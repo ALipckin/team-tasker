@@ -40,13 +40,13 @@ func newBreaker(maxFailures int, openTimeout time.Duration) *breaker {
 	}
 }
 
-func (b *breaker) do(fn func() error) error {
+func (b *breaker) do(ctx context.Context, fn func() error) error {
 	if !b.allow() {
 		return ErrCircuitOpen
 	}
 
 	err := fn()
-	b.record(err)
+	b.record(ctx, err)
 
 	return err
 }
@@ -70,12 +70,14 @@ func (b *breaker) allow() bool {
 	}
 }
 
-func (b *breaker) record(err error) {
+func (b *breaker) record(ctx context.Context, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	// Отмена или таймаут запроса клиента ничего не говорит о здоровье Redis.
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	// Смотрим именно на ctx клиента, а не на тип ошибки: таймаут dial в net
+	// тоже удовлетворяет errors.Is(err, context.DeadlineExceeded).
+	if err != nil && ctx.Err() != nil {
 		if b.state == stateHalfOpen {
 			// Пробный запрос не дал ответа — следующий запрос станет новым пробным.
 			b.state = stateOpen

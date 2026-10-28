@@ -63,7 +63,7 @@ func New(addr, password string, db int) Cache {
 func (c *redisCache) Get(ctx context.Context, key string) (string, error) {
 	var value string
 
-	err := c.breaker.do(func() error {
+	err := c.breaker.do(ctx, func() error {
 		v, err := c.client.Get(ctx, key).Result()
 		if errors.Is(err, redis.Nil) {
 			return nil
@@ -84,7 +84,7 @@ func (c *redisCache) Get(ctx context.Context, key string) (string, error) {
 
 // Set устанавливает значение по ключу с TTL.
 func (c *redisCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
-	return c.breaker.do(func() error {
+	return c.breaker.do(ctx, func() error {
 		return c.client.Set(ctx, key, value, ttl).Err()
 	})
 }
@@ -93,7 +93,7 @@ func (c *redisCache) Set(ctx context.Context, key, value string, ttl time.Durati
 func (c *redisCache) Incr(ctx context.Context, key string) (int64, error) {
 	var n int64
 
-	err := c.breaker.do(func() error {
+	err := c.breaker.do(ctx, func() error {
 		var err error
 		n, err = c.client.Incr(ctx, key).Result()
 		return err
