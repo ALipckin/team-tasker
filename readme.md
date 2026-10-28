@@ -96,6 +96,9 @@ docker run --rm --network <project>_default -v "$PWD/internal/database/migration
 - **Rate limiting.** Token bucket на IP клиента, ответ `429` с `Retry-After`.
   За обратным прокси задайте `TRUSTED_PROXIES`, иначе все клиенты получат общий лимит по адресу прокси.
   Docker Desktop подменяет адрес клиента на адрес шлюза, поэтому локально лимит общий.
+  Указывайте в `TRUSTED_PROXIES` только точный адрес прокси (`/32`), а порт приложения публикуйте
+  на `127.0.0.1`: иначе запросы, проходящие через `docker-proxy` (IPv6, hairpin), придут с адреса
+  шлюза Docker, и клиент сможет подделать IP в `X-Forwarded-For` и обойти лимит.
 - **Логи.** Структурированные JSON-логи (`slog`) по каждому запросу: `request_id`, метод, путь, статус,
   длительность, `user_id`. Заголовок `X-Request-ID` прокидывается в ответ.
 - **Graceful shutdown** по SIGINT/SIGTERM.
