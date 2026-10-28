@@ -90,6 +90,8 @@ type fakeCache struct {
 	reads    int
 	incrErr  error
 	incrCtxs []context.Context
+	// afterIncr вызывается после успешного Incr, до возврата.
+	afterIncr func()
 }
 
 func (f *fakeCache) Get(_ context.Context, key string) (string, error) {
@@ -115,6 +117,9 @@ func (f *fakeCache) Incr(ctx context.Context, key string) (int64, error) {
 	_, _ = fmt.Sscan(f.data[key], &n)
 	n++
 	f.data[key] = fmt.Sprint(n)
+	if f.afterIncr != nil {
+		f.afterIncr()
+	}
 	return n, nil
 }
 
@@ -349,6 +354,29 @@ func TestTaskListBypassesCacheUntilInvalidationSucceeds(t *testing.T) {
 	}
 	if _, stale := f.svc.staleTeams.Load(teamID); stale {
 		t.Error("team must not stay stale after successful invalidation")
+	}
+}
+
+func TestTaskStaleMarkSurvivesConcurrentFailure(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	f.cache.incrErr = errors.New("redis down")
+	f.svc.invalidateTeam(ctx, teamID)
+	f.cache.incrErr = nil
+
+	// Повторная инвалидация проходит, но сразу после её Incr падает
+	// инвалидация параллельного изменения.
+	f.cache.afterIncr = func() {
+		f.cache.afterIncr = nil
+		f.cache.incrErr = errors.New("redis down")
+		f.svc.invalidateTeam(ctx, teamID)
+		f.cache.incrErr = nil
+	}
+	f.svc.invalidateTeam(ctx, teamID)
+
+	if _, stale := f.svc.staleTeams.Load(teamID); !stale {
+		t.Error("failed concurrent invalidation must keep the team stale")
 	}
 }
 

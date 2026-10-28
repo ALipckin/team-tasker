@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -80,7 +81,9 @@ type taskService struct {
 
 	// staleTeams — команды, для которых не удалось инвалидировать кэш.
 	// Пока команда здесь, её списки читаются из БД, а инвалидация повторяется.
+	// Значение — номер последней неудачной попытки из staleGen.
 	staleTeams sync.Map
+	staleGen   atomic.Uint64
 }
 
 func NewTaskService(
@@ -502,14 +505,20 @@ func (s *taskService) listCacheKey(ctx context.Context, f domain.TaskFilter) (st
 func (s *taskService) invalidateTeam(ctx context.Context, teamID int64) bool {
 	ctx = context.WithoutCancel(ctx)
 
+	// Запоминаем отметку до Incr: если параллельная инвалидация упадёт после
+	// нашего успешного Incr, она запишет новую отметку, и снимать её нельзя.
+	mark, stale := s.staleTeams.Load(teamID)
+
 	if _, err := s.cache.Incr(ctx, teamVersionKey(teamID)); err != nil {
-		if _, already := s.staleTeams.LoadOrStore(teamID, struct{}{}); !already {
+		if _, already := s.staleTeams.Swap(teamID, s.staleGen.Add(1)); !already {
 			slog.WarnContext(ctx, "tasks cache invalidation failed", "team_id", teamID, "err", err)
 		}
 		return false
 	}
 
-	s.staleTeams.Delete(teamID)
+	if stale {
+		s.staleTeams.CompareAndDelete(teamID, mark)
+	}
 	return true
 }
 
