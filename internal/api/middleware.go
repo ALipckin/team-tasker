@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -148,8 +149,8 @@ func forwardedFor(trusted []*net.IPNet, headers []string) string {
 	}
 
 	for i := len(hops) - 1; i >= 0; i-- {
-		hop := strings.TrimSpace(hops[i])
-		if net.ParseIP(hop) == nil {
+		hop := parseHop(hops[i])
+		if hop == "" {
 			return ""
 		}
 		if !isTrusted(trusted, hop) {
@@ -158,6 +159,23 @@ func forwardedFor(trusted []*net.IPNet, headers []string) string {
 	}
 
 	return ""
+}
+
+// parseHop приводит элемент X-Forwarded-For к каноничному IP. Прокси могут
+// дописывать порт ("1.2.3.4:5678", "[::1]:5678") или брать IPv6 в скобки.
+// Для "unknown" и обфусцированных идентификаторов (RFC 7239) возвращает "".
+func parseHop(hop string) string {
+	hop = strings.TrimSpace(hop)
+	if host, _, err := net.SplitHostPort(hop); err == nil {
+		hop = host
+	}
+	hop = strings.TrimSuffix(strings.TrimPrefix(hop, "["), "]")
+
+	addr, err := netip.ParseAddr(hop)
+	if err != nil {
+		return ""
+	}
+	return addr.WithZone("").Unmap().String()
 }
 
 func isTrusted(trusted []*net.IPNet, addr string) bool {
