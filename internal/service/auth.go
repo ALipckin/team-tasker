@@ -54,8 +54,10 @@ const (
 	maxNameLen = 255
 )
 
-// dummyHash сравнивается с паролем, когда пользователь не найден, чтобы время
-// ответа Login не выдавало, зарегистрирован ли email.
+// dummyHash сравнивается с паролем, когда пользователь не найден, чтобы Login
+// отвечал за одинаковое время. От перебора email это не защищает: Register
+// намеренно отвечает 409 на занятый email (часть контракта API), поэтому
+// существование аккаунта по-прежнему можно проверить через регистрацию.
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
 
 func (s *authService) Register(ctx context.Context, email, password, name string) (domain.User, error) {
