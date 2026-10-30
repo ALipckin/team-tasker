@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"backend/internal/api/middleware"
 )
 
 func TestRealIP(t *testing.T) {
@@ -33,8 +35,8 @@ func TestRealIP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got string
-			h := realIP(trusted)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-				got = clientIP(r)
+			h := middleware.RealIP(trusted)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				got = middleware.ClientIP(r)
 			}))
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)

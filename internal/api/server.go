@@ -27,6 +27,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"backend/internal/api/middleware"
 	"backend/internal/domain"
 	"backend/internal/service"
 )
@@ -102,9 +103,9 @@ func (h *handler) Routes() http.Handler {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	})
 
-	r.Use(realIP(h.opts.TrustedProxies), requestLogger, recoverer)
+	r.Use(middleware.RealIP(h.opts.TrustedProxies), middleware.RequestLogger, middleware.Recoverer(writeError))
 	if h.opts.RateLimitRPS > 0 {
-		r.Use(newRateLimiter(h.opts.RateLimitRPS, h.opts.RateLimitBurst).middleware)
+		r.Use(middleware.NewRateLimiter(h.opts.RateLimitRPS, h.opts.RateLimitBurst, writeError).Handler)
 	}
 
 	r.HandleFunc("/health", h.healthHandler).Methods(http.MethodGet)
@@ -117,7 +118,7 @@ func (h *handler) Routes() http.Handler {
 	v1.HandleFunc("/login", h.login).Methods(http.MethodPost)
 
 	private := v1.NewRoute().Subrouter()
-	private.Use(h.authMiddleware)
+	private.Use(middleware.Auth(h.authService.ParseToken, writeError))
 
 	private.HandleFunc("/teams", h.createTeam).Methods(http.MethodPost)
 	private.HandleFunc("/teams", h.listTeams).Methods(http.MethodGet)
