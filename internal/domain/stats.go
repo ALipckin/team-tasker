@@ -19,6 +19,6 @@ type TeamStats struct {
 	ClosedTasks         int64            `json:"closed_tasks"`
 	AvgCloseTimeSeconds *float64         `json:"avg_close_time_seconds"`
 	TotalComments       int64            `json:"total_comments"`
-	// CommentsByTask contains up to 10 tasks with the most comments.
+	// CommentsByTask contains comment counts for every task in the team.
 	CommentsByTask []TaskCommentStat `json:"comments_by_task"`
 }

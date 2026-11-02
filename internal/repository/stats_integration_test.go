@@ -94,6 +94,9 @@ func TestTeamStatsIntegration(t *testing.T) {
 	newTask(teamA, domain.StatusDone, &u1, 2, 1)        // 1 день
 	t5 := newTask(teamA, domain.StatusTodo, &u3, 1, -1) // открыта
 	newTask(teamA, domain.StatusInProgress, nil, 1, -1) // без исполнителя
+	for i := 0; i < 11; i++ {
+		newTask(teamA, domain.StatusTodo, nil, 1, -1)
+	}
 	comment(t1, 2)
 	comment(t5, 1)
 
@@ -108,7 +111,7 @@ func TestTeamStatsIntegration(t *testing.T) {
 		t.Fatalf("team stats: %v", err)
 	}
 
-	wantStatus := map[string]int64{"todo": 1, "in_progress": 1, "done": 5}
+	wantStatus := map[string]int64{"todo": 12, "in_progress": 1, "done": 5}
 	for status, want := range wantStatus {
 		if got := stats.TasksByStatus[status]; got != want {
 			t.Errorf("tasks_by_status[%s] = %d, want %d", status, got, want)
@@ -148,8 +151,8 @@ func TestTeamStatsIntegration(t *testing.T) {
 	if stats.TotalComments != 3 {
 		t.Errorf("total_comments = %d, want 3", stats.TotalComments)
 	}
-	if len(stats.CommentsByTask) != 7 {
-		t.Errorf("comments_by_task has %d tasks, want 7", len(stats.CommentsByTask))
+	if len(stats.CommentsByTask) != 18 {
+		t.Errorf("comments_by_task has %d tasks, want 18", len(stats.CommentsByTask))
 	}
 	for i := 1; i < len(stats.CommentsByTask); i++ {
 		if stats.CommentsByTask[i].Comments > stats.CommentsByTask[i-1].Comments {

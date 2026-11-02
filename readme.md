@@ -111,7 +111,7 @@ docker run --rm --network <project>_default -v "$PWD/internal/database/migration
 - количество задач по статусам;
 - топ-3 исполнителя по закрытым задачам за последние 30 дней (`JOIN users`, `GROUP BY`, `LIMIT 3`);
 - количество закрытых задач и среднее время закрытия (`AVG(TIMESTAMPDIFF(SECOND, created_at, closed_at))`);
-- общее количество комментариев и топ-10 задач по числу комментариев (`LEFT JOIN task_comments`, `GROUP BY`).
+- общее количество комментариев и количество комментариев для каждой задачи команды (`LEFT JOIN task_comments`, `GROUP BY`).
 
 ## Примеры запросов
 

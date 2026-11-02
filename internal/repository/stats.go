@@ -22,9 +22,6 @@ func NewStatsRepo(db DB) StatsRepo {
 	return &statsRepo{db: db}
 }
 
-// maxCommentedTasks — сколько задач с наибольшим числом комментариев попадает в отчёт.
-const maxCommentedTasks = 10
-
 // teamStatsQuery собирает весь отчёт по команде одним запросом.
 // Каждая метрика — отдельная CTE, результаты объединяются через UNION ALL
 // в строки вида (metric, ref_id, label, int_value, float_value).
@@ -62,12 +59,6 @@ comment_counts AS (
     LEFT JOIN task_comments c ON c.task_id = t.id
     GROUP BY t.id, t.title
 ),
-top_commented AS (
-    SELECT task_id, title, cnt
-    FROM comment_counts
-    ORDER BY cnt DESC, task_id
-    LIMIT %d
-),
 total_comments AS (
     SELECT COALESCE(SUM(cnt), 0) AS cnt FROM comment_counts
 )
@@ -79,7 +70,7 @@ SELECT 'top_assignee', user_id, name, closed_cnt, NULL FROM top_assignees
 UNION ALL
 SELECT 'close_time', NULL, NULL, closed_cnt, avg_seconds FROM close_time
 UNION ALL
-SELECT 'comments', task_id, title, cnt, NULL FROM top_commented
+SELECT 'comments', task_id, title, cnt, NULL FROM comment_counts
 UNION ALL
 SELECT 'total_comments', NULL, NULL, cnt, NULL FROM total_comments
 `
@@ -93,11 +84,10 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 			string(domain.StatusDone):       0,
 		},
 		TopAssignees30d: make([]domain.AssigneeStat, 0, 3),
-		CommentsByTask:  make([]domain.TaskCommentStat, 0, maxCommentedTasks),
+		CommentsByTask:  make([]domain.TaskCommentStat, 0),
 	}
 
-	query := fmt.Sprintf(teamStatsQuery, maxCommentedTasks)
-	rows, err := r.db.Conn(ctx).QueryContext(ctx, query, teamID)
+	rows, err := r.db.Conn(ctx).QueryContext(ctx, teamStatsQuery, teamID)
 	if err != nil {
 		return stats, fmt.Errorf("select team stats: %w", err)
 	}

@@ -1250,7 +1250,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "comments_by_task": {
-                    "description": "CommentsByTask — до 10 задач с наибольшим числом комментариев.",
+                    "description": "CommentsByTask — число комментариев для каждой задачи команды.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/domain.TaskCommentStat"
