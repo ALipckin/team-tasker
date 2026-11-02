@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build development image
+        run: docker build -f docker/dev.Dockerfile -t team-tasker-ci .
+
+      - name: Run golangci-lint in Docker
+        run: docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace team-tasker-ci golangci-lint run
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: team-tasker-ci-test
+      DB_ROOT_PASSWORD: ci-root-password
+      DB_USER: ci-user
+      DB_PASSWORD: ci-password
+      DB_DATABASE: team_tasker
+      JWT_SECRET: ci-jwt-secret
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run tests in Docker
+        run: docker compose -f docker-compose.yml run --build --rm app go test ./... -v -count=1
