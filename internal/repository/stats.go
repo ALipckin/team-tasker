@@ -18,6 +18,12 @@ type statsRepo struct {
 	db DB
 }
 
+type statsRows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
 func NewStatsRepo(db DB) StatsRepo {
 	return &statsRepo{db: db}
 }
@@ -76,7 +82,24 @@ SELECT 'total_comments', NULL, NULL, cnt, NULL FROM total_comments
 `
 
 func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamStats, error) {
-	stats := domain.TeamStats{
+	rows, err := r.db.Conn(ctx).QueryContext(ctx, teamStatsQuery, teamID)
+	if err != nil {
+		return emptyTeamStats(teamID), fmt.Errorf("select team stats: %w", err)
+	}
+	defer rows.Close()
+
+	stats, err := decodeTeamStats(rows, teamID)
+	if err != nil {
+		return stats, err
+	}
+	if err = rows.Err(); err != nil {
+		return stats, fmt.Errorf("iterate team stats: %w", err)
+	}
+	return stats, nil
+}
+
+func emptyTeamStats(teamID int64) domain.TeamStats {
+	return domain.TeamStats{
 		TeamID: teamID,
 		TasksByStatus: map[string]int64{
 			string(domain.StatusTodo):       0,
@@ -86,12 +109,10 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 		TopAssignees30d: make([]domain.AssigneeStat, 0, 3),
 		CommentsByTask:  make([]domain.TaskCommentStat, 0),
 	}
+}
 
-	rows, err := r.db.Conn(ctx).QueryContext(ctx, teamStatsQuery, teamID)
-	if err != nil {
-		return stats, fmt.Errorf("select team stats: %w", err)
-	}
-	defer rows.Close()
+func decodeTeamStats(rows statsRows, teamID int64) (domain.TeamStats, error) {
+	stats := emptyTeamStats(teamID)
 
 	for rows.Next() {
 		var (
@@ -101,7 +122,7 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 			intVal   int64
 			floatVal sql.NullFloat64
 		)
-		if err = rows.Scan(&metric, &refID, &label, &intVal, &floatVal); err != nil {
+		if err := rows.Scan(&metric, &refID, &label, &intVal, &floatVal); err != nil {
 			return stats, fmt.Errorf("scan team stats: %w", err)
 		}
 
@@ -125,10 +146,6 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 			})
 		}
 	}
-	if err = rows.Err(); err != nil {
-		return stats, fmt.Errorf("iterate team stats: %w", err)
-	}
-
 	// UNION ALL не гарантирует порядок строк внутри частей — сортируем здесь.
 	sort.SliceStable(stats.TopAssignees30d, func(i, j int) bool {
 		a, b := stats.TopAssignees30d[i], stats.TopAssignees30d[j]

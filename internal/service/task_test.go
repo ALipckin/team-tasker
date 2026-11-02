@@ -330,7 +330,7 @@ func TestTaskInvalidationSurvivesCanceledRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	f.svc.invalidateTeam(ctx, teamID)
+	f.svc.listCache.Invalidate(ctx, teamID)
 
 	last := f.cache.incrCtxs[len(f.cache.incrCtxs)-1]
 	if last.Err() != nil {
@@ -349,7 +349,7 @@ func TestTaskListBypassesCacheUntilInvalidationSucceeds(t *testing.T) {
 	// Redis недоступен в момент изменения: версия команды не увеличилась.
 	f.cache.incrErr = errors.New("redis down")
 	f.tasks.tasks[999] = domain.Task{ID: 999, TeamID: teamID}
-	f.svc.invalidateTeam(ctx, teamID)
+	f.svc.listCache.Invalidate(ctx, teamID)
 
 	list, err := f.svc.List(ctx, member, domain.TaskFilter{TeamID: teamID})
 	if err != nil {
@@ -364,7 +364,7 @@ func TestTaskListBypassesCacheUntilInvalidationSucceeds(t *testing.T) {
 	if _, err = f.svc.List(ctx, member, domain.TaskFilter{TeamID: teamID}); err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if _, stale := f.svc.staleTeams.Load(teamID); stale {
+	if _, stale := f.svc.listCache.staleTeams.Load(teamID); stale {
 		t.Error("team must not stay stale after successful invalidation")
 	}
 }
@@ -374,7 +374,7 @@ func TestTaskStaleMarkSurvivesConcurrentFailure(t *testing.T) {
 	ctx := context.Background()
 
 	f.cache.incrErr = errors.New("redis down")
-	f.svc.invalidateTeam(ctx, teamID)
+	f.svc.listCache.Invalidate(ctx, teamID)
 	f.cache.incrErr = nil
 
 	// Повторная инвалидация проходит, но сразу после её Incr падает
@@ -382,12 +382,12 @@ func TestTaskStaleMarkSurvivesConcurrentFailure(t *testing.T) {
 	f.cache.afterIncr = func() {
 		f.cache.afterIncr = nil
 		f.cache.incrErr = errors.New("redis down")
-		f.svc.invalidateTeam(ctx, teamID)
+		f.svc.listCache.Invalidate(ctx, teamID)
 		f.cache.incrErr = nil
 	}
-	f.svc.invalidateTeam(ctx, teamID)
+	f.svc.listCache.Invalidate(ctx, teamID)
 
-	if _, stale := f.svc.staleTeams.Load(teamID); !stale {
+	if _, stale := f.svc.listCache.staleTeams.Load(teamID); !stale {
 		t.Error("failed concurrent invalidation must keep the team stale")
 	}
 }

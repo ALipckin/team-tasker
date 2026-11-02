@@ -1217,7 +1217,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "description": "Role — роль текущего пользователя в команде.",
+                    "description": "Role is the current user's role in the team.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/domain.Role"
@@ -1250,7 +1250,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "comments_by_task": {
-                    "description": "CommentsByTask — число комментариев для каждой задачи команды.",
+                    "description": "CommentsByTask contains comment counts for every task in the team.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/domain.TaskCommentStat"

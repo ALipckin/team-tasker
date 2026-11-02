@@ -2,12 +2,9 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -73,13 +70,8 @@ type taskService struct {
 	teamRepo    MemberRoleGetter
 	historyRepo TaskHistoryRepository
 	commentRepo TaskCommentRepository
-	cache       TaskCache
-	cacheTTL    time.Duration
+	listCache   *taskListCache
 	now         func() time.Time
-	// staleTeams records teams whose task-list cache could not be invalidated.
-	// Lists bypass cache while an entry is present; staleGen tracks retry attempts.
-	staleTeams sync.Map
-	staleGen   atomic.Uint64
 }
 
 func NewTaskService(
@@ -97,8 +89,7 @@ func NewTaskService(
 		teamRepo:    teamRepo,
 		historyRepo: historyRepo,
 		commentRepo: commentRepo,
-		cache:       cache,
-		cacheTTL:    cacheTTL,
+		listCache:   newTaskListCache(cache, cacheTTL),
 		now:         time.Now,
 	}
 }
@@ -171,7 +162,7 @@ func (s *taskService) Create(ctx context.Context, userID int64, in CreateTaskInp
 		return domain.Task{}, err
 	}
 
-	s.invalidateTeam(ctx, task.TeamID)
+	s.listCache.Invalidate(ctx, task.TeamID)
 	slog.InfoContext(ctx, "task created", "task_id", task.ID, "team_id", task.TeamID, "user_id", userID)
 
 	return task, nil
@@ -203,14 +194,8 @@ func (s *taskService) List(ctx context.Context, userID int64, f domain.TaskFilte
 		return domain.TaskList{}, err
 	}
 
-	key, cacheable := s.listCacheKey(ctx, f)
-	if cacheable {
-		if raw, err := s.cache.Get(ctx, key); err == nil {
-			var list domain.TaskList
-			if err = json.Unmarshal([]byte(raw), &list); err == nil {
-				return list, nil
-			}
-		}
+	if list, ok := s.listCache.Get(ctx, f); ok {
+		return list, nil
 	}
 
 	items, total, err := s.taskRepo.List(ctx, f)
@@ -220,13 +205,7 @@ func (s *taskService) List(ctx context.Context, userID int64, f domain.TaskFilte
 
 	list := domain.TaskList{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}
 
-	if cacheable {
-		if raw, err := json.Marshal(list); err == nil {
-			if err = s.cache.Set(ctx, key, string(raw), s.cacheTTL); err != nil {
-				slog.WarnContext(ctx, "cache set failed", "key", key, "err", err)
-			}
-		}
-	}
+	s.listCache.Set(ctx, f, list)
 
 	return list, nil
 }
@@ -312,7 +291,7 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 		return task, nil
 	}
 
-	s.invalidateTeam(ctx, task.TeamID)
+	s.listCache.Invalidate(ctx, task.TeamID)
 	slog.InfoContext(ctx, "task updated", "task_id", task.ID, "user_id", userID, "version", task.Version)
 
 	return task, nil
