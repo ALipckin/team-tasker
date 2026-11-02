@@ -29,7 +29,7 @@ const maxCommentedTasks = 10
 // Каждая метрика — отдельная CTE, результаты объединяются через UNION ALL
 // в строки вида (metric, ref_id, label, int_value, float_value).
 // Все CTE опираются на team_tasks, поэтому данные других команд в отчёт не попадают.
-var teamStatsQuery = fmt.Sprintf(`
+const teamStatsQuery = `
 WITH team_tasks AS (
     SELECT id, title, status, assignee_id, created_at, closed_at
     FROM tasks
@@ -82,7 +82,7 @@ UNION ALL
 SELECT 'comments', task_id, title, cnt, NULL FROM top_commented
 UNION ALL
 SELECT 'total_comments', NULL, NULL, cnt, NULL FROM total_comments
-`, maxCommentedTasks)
+`
 
 func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamStats, error) {
 	stats := domain.TeamStats{
@@ -96,7 +96,8 @@ func (r *statsRepo) TeamStats(ctx context.Context, teamID int64) (domain.TeamSta
 		CommentsByTask:  make([]domain.TaskCommentStat, 0, maxCommentedTasks),
 	}
 
-	rows, err := r.db.Conn(ctx).QueryContext(ctx, teamStatsQuery, teamID)
+	query := fmt.Sprintf(teamStatsQuery, maxCommentedTasks)
+	rows, err := r.db.Conn(ctx).QueryContext(ctx, query, teamID)
 	if err != nil {
 		return stats, fmt.Errorf("select team stats: %w", err)
 	}

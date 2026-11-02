@@ -18,6 +18,8 @@ func (p TaskPatch) Empty() bool {
 // Роль создателя приглашением не выдаётся; назначать администраторов может только создатель.
 func CanInvite(actor, target Role) bool {
 	switch target {
+	case RoleOwner:
+		return false
 	case RoleMember:
 		return actor.IsManager()
 	case RoleAdmin:

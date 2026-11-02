@@ -34,17 +34,19 @@ type AuthService interface {
 
 // authService — сервис авторизации.
 type authService struct {
-	userRepo AuthUserRepository
-	secret   []byte
-	ttl      time.Duration
+	userRepo  AuthUserRepository
+	secret    []byte
+	ttl       time.Duration
+	dummyHash []byte
 }
 
 // NewAuthService создаёт сервис авторизации.
 func NewAuthService(userRepo AuthUserRepository, secret string, ttl time.Duration) AuthService {
 	return &authService{
-		userRepo: userRepo,
-		secret:   []byte(secret),
-		ttl:      ttl,
+		userRepo:  userRepo,
+		secret:    []byte(secret),
+		ttl:       ttl,
+		dummyHash: makeDummyHash(),
 	}
 }
 
@@ -58,7 +60,13 @@ const (
 // отвечал за одинаковое время. От перебора email это не защищает: Register
 // намеренно отвечает 409 на занятый email (часть контракта API), поэтому
 // существование аккаунта по-прежнему можно проверить через регистрацию.
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
+func makeDummyHash() []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(fmt.Sprintf("generate dummy password hash: %v", err))
+	}
+	return hash
+}
 
 func (s *authService) Register(ctx context.Context, email, password, name string) (domain.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -89,7 +97,7 @@ func (s *authService) Register(ctx context.Context, email, password, name string
 	}
 
 	u := domain.User{Email: email, PasswordHash: string(hash), Name: name}
-	if err = s.userRepo.Create(ctx, &u); err != nil {
+	if err := s.userRepo.Create(ctx, &u); err != nil {
 		return domain.User{}, err
 	}
 
@@ -103,7 +111,10 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 
 	u, err := s.userRepo.GetByEmail(ctx, email)
 	if errors.Is(err, domain.ErrNotFound) {
-		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		compareErr := bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
+		if compareErr != nil && !errors.Is(compareErr, bcrypt.ErrMismatchedHashAndPassword) {
+			return "", domain.User{}, fmt.Errorf("compare dummy password: %w", compareErr)
+		}
 		return "", domain.User{}, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 	}
 	if err != nil {

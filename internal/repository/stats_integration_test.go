@@ -14,6 +14,8 @@ import (
 
 // Интеграционный тест SQL-отчёта. Требует MySQL: переменные DB_* как у приложения.
 // Внутри docker compose запускается командой `make test`.
+//
+//nolint:funlen,gocognit,gocyclo // The test verifies the complete report against isolated SQL fixtures.
 func TestTeamStatsIntegration(t *testing.T) {
 	if os.Getenv("DB_HOST") == "" {
 		t.Skip("DB_HOST is not set, skipping integration test")
@@ -46,7 +48,10 @@ func TestTeamStatsIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("exec %q: %v", query, err)
 		}
-		id, _ := res.LastInsertId()
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("last insert id for %q: %v", query, err)
+		}
 		return id
 	}
 
@@ -163,7 +168,8 @@ func TestTeamStatsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty team stats: %v", err)
 	}
-	if empty.ClosedTasks != 0 || empty.AvgCloseTimeSeconds != nil || len(empty.TopAssignees30d) != 0 || empty.TotalComments != 0 {
+	if empty.ClosedTasks != 0 || empty.AvgCloseTimeSeconds != nil ||
+		len(empty.TopAssignees30d) != 0 || empty.TotalComments != 0 {
 		t.Errorf("unexpected stats for empty team: %+v", empty)
 	}
 }

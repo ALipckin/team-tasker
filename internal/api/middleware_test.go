@@ -10,7 +10,10 @@ import (
 )
 
 func TestRealIP(t *testing.T) {
-	_, proxies, _ := net.ParseCIDR("10.0.0.0/8")
+	_, proxies, err := net.ParseCIDR("10.0.0.0/8")
+	if err != nil {
+		t.Fatalf("parse trusted proxy CIDR: %v", err)
+	}
 	trusted := []*net.IPNet{proxies}
 
 	tests := []struct {

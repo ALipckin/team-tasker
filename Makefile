@@ -18,7 +18,7 @@ help:
 	@echo "  make build        - Build API binary in app container"
 	@echo "  make test         - Run all tests (incl. MySQL integration) in app container"
 	@echo "  make test-unit    - Run unit tests locally (integration tests are skipped)"
-	@echo "  make lint         - Run go vet in app container"
+	@echo "  make lint         - Run golangci-lint in app container"
 	@echo "  make fmt          - Run gofmt in app container"
 	@echo "  make tidy         - Run go mod tidy in app container"
 	@echo "  make swagger      - Regenerate OpenAPI spec from handler annotations"
@@ -63,7 +63,7 @@ test-unit:
 	@go test ./... -count=1
 
 lint:
-	@$(COMPOSE_DEV) run --rm --no-deps app go vet ./...
+	@$(COMPOSE_DEV) run --rm --no-deps app golangci-lint run
 
 fmt:
 	@$(COMPOSE_DEV) run --rm --no-deps app sh -c 'find . -name "*.go" -print0 | xargs -0 gofmt -w'

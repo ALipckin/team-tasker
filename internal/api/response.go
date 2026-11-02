@@ -38,7 +38,7 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrValidation):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrUnauthorized):
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, http.StatusUnauthorized, "unauthorized") //nolint:misspell // Preserve the established API error code.
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrNotFound):

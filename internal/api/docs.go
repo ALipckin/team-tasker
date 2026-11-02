@@ -27,10 +27,14 @@ const swaggerUIPage = `<!doctype html>
 
 func swaggerUIHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(swaggerUIPage))
+	if _, err := w.Write([]byte(swaggerUIPage)); err != nil {
+		return
+	}
 }
 
 func swaggerSpecHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(docs.SwaggerInfo.ReadDoc()))
+	if _, err := w.Write([]byte(docs.SwaggerInfo.ReadDoc())); err != nil {
+		return
+	}
 }

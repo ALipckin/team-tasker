@@ -7,7 +7,7 @@ import "errors"
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrForbidden     = errors.New("forbidden")
-	ErrUnauthorized  = errors.New("unauthorized")
+	ErrUnauthorized  = errors.New("unauthorized") //nolint:misspell // Keep the standard API authentication term.
 	ErrAlreadyExists = errors.New("already exists")
 	ErrConflict      = errors.New("conflict")
 	ErrValidation    = errors.New("validation error")

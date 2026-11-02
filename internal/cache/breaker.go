@@ -56,6 +56,8 @@ func (b *breaker) allow() bool {
 	defer b.mu.Unlock()
 
 	switch b.state {
+	case stateClosed:
+		return true
 	case stateOpen:
 		if b.now().Sub(b.openedAt) < b.openTimeout {
 			return false
@@ -65,9 +67,8 @@ func (b *breaker) allow() bool {
 	case stateHalfOpen:
 		// Пробный запрос уже выполняется.
 		return false
-	default:
-		return true
 	}
+	return false
 }
 
 func (b *breaker) record(ctx context.Context, err error) {

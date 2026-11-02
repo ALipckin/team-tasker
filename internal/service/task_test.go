@@ -114,7 +114,11 @@ func (f *fakeCache) Incr(ctx context.Context, key string) (int64, error) {
 		return 0, f.incrErr
 	}
 	var n int64
-	_, _ = fmt.Sscan(f.data[key], &n)
+	if raw, ok := f.data[key]; ok {
+		if _, err := fmt.Sscan(raw, &n); err != nil {
+			return 0, fmt.Errorf("parse cache counter: %w", err)
+		}
+	}
 	n++
 	f.data[key] = fmt.Sprint(n)
 	if f.afterIncr != nil {
@@ -156,10 +160,16 @@ func newFixture(t *testing.T) *fixture {
 		history: &fakeHistory{},
 		cache:   &fakeCache{data: map[string]string{}},
 	}
-	f.svc = NewTaskService(fakeTx{}, f.tasks, teams, f.history, fakeComments{}, f.cache, time.Minute).(*taskService)
+	svc, ok := NewTaskService(fakeTx{}, f.tasks, teams, f.history, fakeComments{}, f.cache, time.Minute).(*taskService)
+	if !ok {
+		t.Fatal("NewTaskService returned unexpected implementation")
+	}
+	f.svc = svc
 
 	a := assignee
-	task, err := f.svc.Create(context.Background(), creator, CreateTaskInput{TeamID: teamID, Title: "task", AssigneeID: &a})
+	task, err := f.svc.Create(context.Background(), creator, CreateTaskInput{
+		TeamID: teamID, Title: "task", AssigneeID: &a,
+	})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -239,7 +249,9 @@ func TestTaskUpdateWritesHistoryAndInvalidatesCache(t *testing.T) {
 	}
 
 	// Повторное обновление со старой версией — конфликт, а не потерянное изменение.
-	_, err = f.svc.Update(ctx, owner, f.task.ID, UpdateTaskInput{TaskPatch: domain.TaskPatch{Title: ptr("stale")}, Version: 1})
+	_, err = f.svc.Update(ctx, owner, f.task.ID, UpdateTaskInput{
+		TaskPatch: domain.TaskPatch{Title: ptr("stale")}, Version: 1,
+	})
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected conflict, got %v", err)
 	}

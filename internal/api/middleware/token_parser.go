@@ -12,13 +12,13 @@ func Auth(parseToken TokenParser, writeError ErrorWriter) func(http.Handler) htt
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 			if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
+				writeError(w, http.StatusUnauthorized, "unauthorized") //nolint:misspell // Preserve the established API error code.
 				return
 			}
 
 			userID, err := parseToken(token)
 			if err != nil {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
+				writeError(w, http.StatusUnauthorized, "unauthorized") //nolint:misspell // Preserve the established API error code.
 				return
 			}
 

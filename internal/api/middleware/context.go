@@ -22,6 +22,9 @@ func ContextWithUserID(ctx context.Context, userID int64) context.Context {
 }
 
 func UserIDFromContext(ctx context.Context) int64 {
-	userID, _ := ctx.Value(userIDContextKey{}).(int64)
+	userID, ok := ctx.Value(userIDContextKey{}).(int64)
+	if !ok {
+		return 0
+	}
 	return userID
 }

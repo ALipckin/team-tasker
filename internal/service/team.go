@@ -76,7 +76,9 @@ func (s *teamService) List(ctx context.Context, userID int64) ([]domain.Team, er
 }
 
 // Invite добавляет зарегистрированного пользователя в команду.
-func (s *teamService) Invite(ctx context.Context, actorID, teamID int64, email string, role domain.Role) (domain.TeamMember, error) {
+func (s *teamService) Invite(
+	ctx context.Context, actorID, teamID int64, email string, role domain.Role,
+) (domain.TeamMember, error) {
 	if role == "" {
 		role = domain.RoleMember
 	}
@@ -117,7 +119,9 @@ func (s *teamService) Invite(ctx context.Context, actorID, teamID int64, email s
 }
 
 // ChangeRole меняет роль участника. Доступно только создателю команды.
-func (s *teamService) ChangeRole(ctx context.Context, actorID, teamID, userID int64, role domain.Role) (domain.TeamMember, error) {
+func (s *teamService) ChangeRole(
+	ctx context.Context, actorID, teamID, userID int64, role domain.Role,
+) (domain.TeamMember, error) {
 	if !role.Valid() {
 		return domain.TeamMember{}, validationError("invalid role")
 	}

@@ -81,7 +81,11 @@ func (r *teamRepo) UpdateMemberRole(ctx context.Context, m domain.TeamMember) er
 		return fmt.Errorf("update team member: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update team member rows affected: %w", err)
+	}
+	if n == 0 {
 		// Роль могла не измениться — проверяем, что участник существует.
 		if _, err = r.GetMemberRole(ctx, m.TeamID, m.UserID); err != nil {
 			return err

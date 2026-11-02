@@ -122,7 +122,8 @@ func (r *taskRepo) List(ctx context.Context, f domain.TaskFilter) ([]domain.Task
 	cond := strings.Join(where, " AND ")
 
 	var total int64
-	if err := r.db.Conn(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE `+cond, args...).Scan(&total); err != nil {
+	query := `SELECT COUNT(*) FROM tasks WHERE ` + cond
+	if err := r.db.Conn(ctx).QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count tasks: %w", err)
 	}
 

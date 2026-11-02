@@ -11,6 +11,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate/v4"
 	migratemysql "github.com/golang-migrate/migrate/v4/database/mysql"
+	// Register the file source driver used by migrations.NewWithDatabaseInstance.
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 

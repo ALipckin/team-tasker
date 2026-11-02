@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"backend/internal/cache"
 	"backend/internal/domain"
 )
 
@@ -78,10 +76,8 @@ type taskService struct {
 	cache       TaskCache
 	cacheTTL    time.Duration
 	now         func() time.Time
-
-	// staleTeams — команды, для которых не удалось инвалидировать кэш.
-	// Пока команда здесь, её списки читаются из БД, а инвалидация повторяется.
-	// Значение — номер последней неудачной попытки из staleGen.
+	// staleTeams records teams whose task-list cache could not be invalidated.
+	// Lists bypass cache while an entry is present; staleGen tracks retry attempts.
 	staleTeams sync.Map
 	staleGen   atomic.Uint64
 }
@@ -243,7 +239,7 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 	if in.Version <= 0 {
 		return domain.Task{}, validationError("version is required")
 	}
-	if in.TaskPatch.Empty() {
+	if in.Empty() {
 		return domain.Task{}, validationError("nothing to update")
 	}
 	if in.Title != nil {
@@ -296,12 +292,12 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 		}
 
 		if _, ok := changes["assignee_id"]; ok {
-			if err = s.checkAssignee(ctx, task.TeamID, task.AssigneeID); err != nil {
+			if err := s.checkAssignee(ctx, task.TeamID, task.AssigneeID); err != nil {
 				return err
 			}
 		}
 
-		if err = s.taskRepo.Update(ctx, &task, current.Version); err != nil {
+		if err := s.taskRepo.Update(ctx, &task, current.Version); err != nil {
 			return err
 		}
 
@@ -322,84 +318,6 @@ func (s *taskService) Update(ctx context.Context, userID, taskID int64, in Updat
 	return task, nil
 }
 
-func (s *taskService) History(ctx context.Context, userID, taskID int64) ([]domain.TaskHistory, error) {
-	if _, err := s.visibleTask(ctx, userID, taskID); err != nil {
-		return nil, err
-	}
-
-	return s.historyRepo.ListByTask(ctx, taskID)
-}
-
-func (s *taskService) AddComment(ctx context.Context, userID, taskID int64, content string) (domain.TaskComment, error) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return domain.TaskComment{}, validationError("content is required")
-	}
-	if len(content) > maxContentLen {
-		return domain.TaskComment{}, validationError("content is too long")
-	}
-
-	if _, err := s.visibleTask(ctx, userID, taskID); err != nil {
-		return domain.TaskComment{}, err
-	}
-
-	c := domain.TaskComment{TaskID: taskID, UserID: userID, Content: content}
-	if err := s.commentRepo.Add(ctx, &c); err != nil {
-		return domain.TaskComment{}, err
-	}
-
-	return c, nil
-}
-
-func (s *taskService) Comments(ctx context.Context, userID, taskID int64) ([]domain.TaskComment, error) {
-	if _, err := s.visibleTask(ctx, userID, taskID); err != nil {
-		return nil, err
-	}
-
-	return s.commentRepo.ListByTask(ctx, taskID)
-}
-
-// visibleTask возвращает задачу, если пользователь состоит в её команде.
-// Для задач чужих команд возвращается ErrNotFound.
-func (s *taskService) visibleTask(ctx context.Context, userID, taskID int64) (domain.Task, error) {
-	task, _, err := s.taskRole(ctx, userID, taskID)
-	return task, err
-}
-
-// taskRole возвращает задачу и роль пользователя в её команде.
-// Для задач чужих команд возвращается ErrNotFound.
-func (s *taskService) taskRole(ctx context.Context, userID, taskID int64) (domain.Task, domain.Role, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
-	if err != nil {
-		return domain.Task{}, "", err
-	}
-
-	role, err := s.teamRepo.GetMemberRole(ctx, task.TeamID, userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return domain.Task{}, "", fmt.Errorf("task: %w", domain.ErrNotFound)
-		}
-		return domain.Task{}, "", err
-	}
-
-	return task, role, nil
-}
-
-// checkAssignee проверяет, что исполнитель состоит в команде задачи.
-func (s *taskService) checkAssignee(ctx context.Context, teamID int64, assigneeID *int64) error {
-	if assigneeID == nil {
-		return nil
-	}
-
-	_, err := s.teamRepo.GetMemberRole(ctx, teamID, *assigneeID)
-	if errors.Is(err, domain.ErrNotFound) {
-		return validationError("assignee must be a member of the team")
-	}
-
-	return err
-}
-
-// applyPatch применяет изменения к задаче и возвращает только реально изменившиеся поля.
 func (s *taskService) applyPatch(t *domain.Task, p domain.TaskPatch) map[string]domain.FieldChange {
 	changes := make(map[string]domain.FieldChange)
 
@@ -462,67 +380,3 @@ func equalIDs(a, b *int64) bool {
 // Кэш списка задач версионируется по команде: ключ включает номер версии команды,
 // а любое изменение задач увеличивает его. Старые ключи становятся недостижимыми
 // и истекают по TTL. Так инвалидируются сразу все комбинации фильтров команды.
-func teamVersionKey(teamID int64) string {
-	return fmt.Sprintf("tasks:team:%d:ver", teamID)
-}
-
-func (s *taskService) listCacheKey(ctx context.Context, f domain.TaskFilter) (string, bool) {
-	if _, stale := s.staleTeams.Load(f.TeamID); stale && !s.invalidateTeam(ctx, f.TeamID) {
-		// Инвалидация так и не прошла — кэш команды может быть устаревшим.
-		return "", false
-	}
-
-	ver := int64(0)
-
-	raw, err := s.cache.Get(ctx, teamVersionKey(f.TeamID))
-	switch {
-	case err == nil:
-		if _, scanErr := fmt.Sscan(raw, &ver); scanErr != nil {
-			return "", false
-		}
-	case isCacheMiss(err):
-	default:
-		// Кэш недоступен — идём в БД.
-		return "", false
-	}
-
-	status := ""
-	if f.Status != nil {
-		status = string(*f.Status)
-	}
-	assignee := ""
-	if f.AssigneeID != nil {
-		assignee = fmt.Sprint(*f.AssigneeID)
-	}
-
-	return fmt.Sprintf("tasks:team:%d:v%d:status=%s:assignee=%s:limit=%d:offset=%d",
-		f.TeamID, ver, status, assignee, f.Limit, f.Offset), true
-}
-
-// invalidateTeam сбрасывает кэш списков команды. Изменение уже закоммичено,
-// поэтому отмена запроса клиентом не должна прерывать инвалидацию.
-// При ошибке команда помечается устаревшей: её списки идут мимо кэша,
-// пока очередная попытка инвалидации не пройдёт.
-func (s *taskService) invalidateTeam(ctx context.Context, teamID int64) bool {
-	ctx = context.WithoutCancel(ctx)
-
-	// Запоминаем отметку до Incr: если параллельная инвалидация упадёт после
-	// нашего успешного Incr, она запишет новую отметку, и снимать её нельзя.
-	mark, stale := s.staleTeams.Load(teamID)
-
-	if _, err := s.cache.Incr(ctx, teamVersionKey(teamID)); err != nil {
-		if _, already := s.staleTeams.Swap(teamID, s.staleGen.Add(1)); !already {
-			slog.WarnContext(ctx, "tasks cache invalidation failed", "team_id", teamID, "err", err)
-		}
-		return false
-	}
-
-	if stale {
-		s.staleTeams.CompareAndDelete(teamID, mark)
-	}
-	return true
-}
-
-func isCacheMiss(err error) bool {
-	return errors.Is(err, cache.ErrMiss)
-}
