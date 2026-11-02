@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"backend/internal/domain"
 )
@@ -28,6 +29,10 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeServiceError(w, r, err)
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" || req.Password == "" || strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -65,6 +70,10 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeServiceError(w, r, err)
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 

@@ -9,12 +9,13 @@ import (
 
 // RateLimiter implements a token bucket for each client IP.
 type RateLimiter struct {
-	mu         sync.Mutex
-	rate       float64
-	burst      float64
-	buckets    map[string]*bucket
-	now        func() time.Time
-	writeError ErrorWriter
+	mu          sync.Mutex
+	rate        float64
+	burst       float64
+	buckets     map[string]*bucket
+	now         func() time.Time
+	nextCleanup time.Time
+	writeError  ErrorWriter
 }
 
 type bucket struct {
@@ -33,7 +34,6 @@ func NewRateLimiter(rps float64, burst int, writeError ErrorWriter) *RateLimiter
 		now:        time.Now,
 		writeError: writeError,
 	}
-	go limiter.cleanup(time.Minute)
 	return limiter
 }
 
@@ -42,6 +42,14 @@ func (rl *RateLimiter) allow(key string) bool {
 	defer rl.mu.Unlock()
 
 	now := rl.now()
+	if !now.Before(rl.nextCleanup) {
+		for key, b := range rl.buckets {
+			if now.Sub(b.last) > time.Minute {
+				delete(rl.buckets, key)
+			}
+		}
+		rl.nextCleanup = now.Add(time.Minute)
+	}
 	b, ok := rl.buckets[key]
 	if !ok {
 		b = &bucket{tokens: rl.burst, last: now}
@@ -54,20 +62,6 @@ func (rl *RateLimiter) allow(key string) bool {
 	}
 	b.tokens--
 	return true
-}
-
-func (rl *RateLimiter) cleanup(every time.Duration) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	for range ticker.C {
-		rl.mu.Lock()
-		for key, b := range rl.buckets {
-			if rl.now().Sub(b.last) > every {
-				delete(rl.buckets, key)
-			}
-		}
-		rl.mu.Unlock()
-	}
 }
 
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {

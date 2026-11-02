@@ -36,17 +36,17 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid request")
 	case errors.Is(err, domain.ErrUnauthorized):
 		writeError(w, http.StatusUnauthorized, "unauthorized") //nolint:misspell // Preserve the established API error code.
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "resource not found")
 	case errors.Is(err, domain.ErrAlreadyExists):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, http.StatusConflict, "resource already exists")
 	case errors.Is(err, domain.ErrConflict):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, http.StatusConflict, "resource conflict")
 	default:
 		slog.ErrorContext(r.Context(), "internal error", "err", err, "path", r.URL.Path)
 		writeError(w, http.StatusInternalServerError, "internal server error")
